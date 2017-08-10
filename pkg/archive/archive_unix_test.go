@@ -9,12 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 
-	"github.com/docker/docker/pkg/system"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/docker/docker/pkg/system"
 	"golang.org/x/sys/unix"
 )
 
@@ -259,5 +260,44 @@ func TestTarUntarWithXattr(t *testing.T) {
 		if capability == nil && capability[0] != 0x00 {
 			t.Fatalf("Untar should have kept the 'security.capability' xattr.")
 		}
+	}
+}
+
+
+
+func TestCopyInfoDestinationPathSymlink(t *testing.T) {
+	tmpDir, _ := getTestTempDirs(t)
+	defer removeAllPaths(tmpDir)
+
+	root := strings.TrimRight(tmpDir, "/") + "/"
+
+	type FileTestData struct {
+		directory	FileData
+		file		string
+		expected	CopyInfo
+	}
+
+	testData := []FileTestData{
+		{directory: FileData{filetype: Dir, path: "dir1", permissions: 0740}, file: "file1", expected: CopyInfo{Path: root + "dir1/file1", Exists: false, IsDir: false}},
+		{directory: FileData{filetype: Symlink, path: "dirSymlink", contents: root + "dir1", permissions: 0600}, file: "file2", expected: CopyInfo{Path: root + "dirSymlink/file2", Exists: false, IsDir: false}},
+		{directory: FileData{filetype: Regular, path: "file1", permissions: 0600}, file: "", expected: CopyInfo{Path: root + "file1", Exists: true}},
+		{directory: FileData{filetype: Dir, path: "dir2", permissions: 0740}, file: "", expected: CopyInfo{Path: root + "dir2", Exists: true, IsDir: true}},
+		{directory: FileData{filetype: Regular, path: "existingfile", permissions: 0600}, file: "", expected: CopyInfo{Path: root + "existingfile", Exists: true}},
+		{directory: FileData{filetype: Symlink, path: "symlink1", contents: "noSuchTarget", permissions: 0600}, file: "", expected: CopyInfo{Path: root + "noSuchTarget", Exists: false}},
+		{directory: FileData{filetype: Symlink, path: "symlink2", contents: "existingfile", permissions: 0600}, file: "", expected: CopyInfo{Path: root + "existingfile", Exists: true}},
+		{directory: FileData{filetype: Regular, path: "dir2/existingfile", permissions: 0600}, file: "", expected: CopyInfo{Path: root + "dir2/existingfile", Exists: true}},
+	}
+
+	var dirs []FileData
+	for _, data := range testData {
+		dirs = append(dirs, data.directory)
+	}
+	provisionSampleDir(t, tmpDir, dirs)
+
+	for _, info := range testData {
+		p := filepath.Join(tmpDir, info.directory.path, info.file)
+		ci, err := CopyInfoDestinationPath(p)
+		assert.NoError(t, err)
+		assert.Equal(t, info.expected, ci)
 	}
 }

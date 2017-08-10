@@ -166,9 +166,7 @@ func CopyInfoDestinationPath(path string) (info CopyInfo, err error) {
 	maxSymlinkIter := 10 // filepath.EvalSymlinks uses 255, but 10 already seems like a lot.
 	path = normalizePath(path)
 	originalPath := path
-
 	stat, err := os.Lstat(path)
-
 	if err == nil && stat.Mode()&os.ModeSymlink == 0 {
 		// The path exists and is not a symlink.
 		return CopyInfo{
@@ -214,14 +212,13 @@ func CopyInfoDestinationPath(path string) (info CopyInfo, err error) {
 		if !os.IsNotExist(err) {
 			return CopyInfo{}, err
 		}
-
 		// Ensure destination parent dir exists.
 		dstParent, _ := SplitPathDirEntry(path)
-
-		parentDirStat, err := os.Lstat(dstParent)
+		parentDirStat, err := os.Stat(dstParent)
 		if err != nil {
 			return CopyInfo{}, err
 		}
+
 		if !parentDirStat.IsDir() {
 			return CopyInfo{}, ErrNotDirectory
 		}
