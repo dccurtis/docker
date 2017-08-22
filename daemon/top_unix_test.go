@@ -33,6 +33,32 @@ func TestContainerTopValidatePSArgs(t *testing.T) {
 	}
 }
 
+func TestCorrectPidValue(t *testing.T) {
+	tests := []struct {
+		line          string
+		pidValue      string
+		expected_line string
+	}{
+		{
+			string("abcd 1234root 3456"),
+			string("1234root"),
+			string("abcd 1234 root 3456"),
+		},
+		{
+			string("abcd 123456 3456"),
+			string("123456"),
+			string("abcd 123456 3456"),
+		},
+	}
+
+	for _, f := range tests {
+		newline := correctPidValue(f.line, f.pidValue)
+		if f.expected_line != newline {
+			t.Fatalf("expected line: %v, got %v", f.expected_line, newline)
+		}
+	}
+}
+
 func TestContainerTopParsePSOutput(t *testing.T) {
 	tests := []struct {
 		output      []byte
@@ -64,6 +90,29 @@ func TestContainerTopParsePSOutput(t *testing.T) {
    43 bar
   100 baz
 `), []int{42, 43}, true},
+		{[]byte(`  PID COMMAND
+   42root
+`), []int{42}, false},
+		{[]byte(`  PID COMMAND
+   42root
+   43 bar
+   100 baz
+`), []int{42, 43, 100}, false},
+		{[]byte(`  PID COMMAND
+   43 bar
+   42root
+   100 baz
+`), []int{43, 42, 100}, false},
+		{[]byte(`  PID COMMAND
+   43 bar
+   100 baz
+   42root
+`), []int{43, 100, 42}, false},
+		{[]byte(`  PID PPID
+   43 bar
+   100123
+   42root
+`), []int{43, 100123, 42}, false},
 	}
 
 	for _, f := range tests {

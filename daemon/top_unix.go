@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/docker/docker/api/types/container"
 )
@@ -59,6 +60,35 @@ func hasPid(pids []int, pid int) bool {
 	return false
 }
 
+func insertCharacterToLine(base_string string, index int, value string) string {
+	new_string := base_string[:index] + value + base_string[index:]
+	return new_string
+}
+
+func correctPidValue(line string, pidValue string) string {
+	// PIDs are numeric values.  If pidValue contains any non-numeric characters
+	// it's assumed that the value belongs in the ps column after PID
+	var alpha_pos = -1
+	for pos, character := range pidValue {
+		if unicode.IsLetter(character) {
+			alpha_pos = pos
+			break
+		}
+	}
+
+	if alpha_pos == -1 {
+		// pidValue contains only numeric characters, unable to correct
+		// the field.
+		return line
+	}
+
+	pidValue_index := strings.Index(line, pidValue)
+	split_at_index := alpha_pos + pidValue_index
+	newline := insertCharacterToLine(line, split_at_index, " ")
+
+	return newline
+}
+
 func parsePSOutput(output []byte, pids []int) (*container.ContainerTopOKBody, error) {
 	procList := &container.ContainerTopOKBody{}
 
@@ -83,6 +113,13 @@ func parsePSOutput(output []byte, pids []int) (*container.ContainerTopOKBody, er
 		if len(line) == 0 {
 			continue
 		}
+
+		// Issue #34282 has identified a situation where the PID column
+		// and the next column's fields are not separated by white space.
+		// This is an attempt to correct the line when the column following PID
+		// starts with a letter.
+		line = correctPidValue(line, fieldsASCII(line)[pidIndex])
+
 		fields := fieldsASCII(line)
 
 		var (
